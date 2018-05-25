@@ -17,7 +17,7 @@ void get_bmpdata(char * bmpfilename,char * yuvfilename, char yuvmode)
 	WORD lineSize;				//一行的字节个数
 	BMPFileHead bfh;			//定义文件头信息
 	BMPHeaderInfo bhi;			//定义bmp头信息
-	//bmp有单色，16色，256色和24位无调色板四种模式。
+	//bmp有单色，16色，256色,16位、24位、32位无调色板四种模式。
 	//色板作为数据的颜色映射（直接映射表项），不改动，访问频率高，所以采用数组来存储
 	RGB  color[256]={0};		
 	YUV  yuvcolor[256]={0};		//RGB的YUV映射
@@ -27,28 +27,43 @@ void get_bmpdata(char * bmpfilename,char * yuvfilename, char yuvmode)
 		printf("open bmpfile error!\n");
 		exit(EXIT_FAILURE);
 	}
+
 	//读取文件头信息
 	if ((fread(&bfh,sizeof(WORD), 7, fp)) < 7){
 		printf("read file error!\n");
 		exit(EXIT_FAILURE);
 	}
+	//printBMPFileHead(&bfh);
+
 	//读取位图信息头
 	if ((fread(&bhi,sizeof(WORD),20 , fp)) < 20){
 		printf("read file error!\n");
 		exit(EXIT_FAILURE);
 	}
+	//printBMPHeaderInfo(&bhi);
+
 	if (bhi.biHeight%2 == 1 || bhi.biWidth%2 ==1){
 		printf("the size of picture is wrong!\n");
 		exit(EXIT_FAILURE);
 	}
-	//如果不是24位色则获取调色板
-	if (bhi.biBitCount != 0x18){
+
+	//printf("bhi.biBitCount=%u\n\n",bhi.biBitCount);
+	//如果是单/16/256色则获取调色板
+	if (bhi.biBitCount == 0x01 || bhi.biBitCount == 0x04 || bhi.biBitCount == 0x08){
 		for (i=0;i<pow(2,bhi.biBitCount);i++){
 			fread(&(color[i]),sizeof(BYTE), 4, fp);
 			calculateYUV((yuvcolor+i), color[i]);
 		}
 	}
+
+	if (bhi.biSizeImage == 0) {
+		bhi.biSizeImage = ((bhi.biHeight * bhi.biWidth) * bhi.biBitCount) >> 3;
+	}
+	//printf("bhi.biSizeImage=%u\n", bhi.biSizeImage);
+	//printf("bhi.biHeight=%u\n", bhi.biHeight);
+	//printf("bhi.biWidth=%u\n", bhi.biWidth);
 	lineSize = bhi.biSizeImage/bhi.biHeight;
+
 	//分配内存获取bmp数据
 	databuf = (BYTE *)malloc(sizeof(BYTE)*bhi.biSizeImage);
 	if (databuf == NULL){
@@ -92,16 +107,19 @@ void to_yuv(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode, BMPHeaderInfo
 {
 	switch (bhi.biBitCount){
 	case 1://1个像素1位,2种颜色
-		writeyuv2(fv, databuf, yuvcolor, yuvmode,bhi);
+		writeyuv1(fv, databuf, yuvcolor, yuvmode,bhi);
 		break;
 	case 4://1个像素4位， 16种颜色
-		writeyuv16(fv, databuf, yuvcolor, yuvmode,bhi);
+		writeyuv4(fv, databuf, yuvcolor, yuvmode,bhi);
 		break;
 	case 8://1个像素8位，256种颜色
-		writeyuv256(fv, databuf, yuvcolor, yuvmode,bhi);
+		writeyuv8(fv, databuf, yuvcolor, yuvmode,bhi);
 		break;
 	case 24://24位无调色板
 		writeyuv24(fv, databuf, yuvmode,bhi);
+		break;
+	case 32://32位无调色板
+		writeyuv32(fv, databuf, yuvmode, bhi);
 		break;
 	default:{
 		printf("bmp error!\n");
@@ -121,7 +139,7 @@ void to_yuv(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode, BMPHeaderInfo
 	功能：将单色的bmp文件转换为指定格式的yuv文件
 	返回值：无
 */
-void writeyuv2(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderInfo bhi)
+void writeyuv1(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderInfo bhi)
 {
 	unsigned long i;
 	int flag=0, count=0;
@@ -361,7 +379,7 @@ void writeyuv2(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderIn
 	功能：将16色的bmp文件转换为指定格式的yuv文件
 	返回值：无
 */
-void writeyuv16(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderInfo bhi)
+void writeyuv4(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderInfo bhi)
 {
 	DWORD lineSize = bhi.biSizeImage/bhi.biHeight;
 	unsigned long i, count=0;
@@ -602,7 +620,7 @@ void writeyuv16(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderI
 	功能：将256色的bmp文件转换为指定格式的yuv文件
 	返回值：无
 */
-void writeyuv256(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderInfo bhi)
+void writeyuv8(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderInfo bhi)
 {
 	unsigned long i, count=0;
 	DWORD lineSize = bhi.biSizeImage/bhi.biHeight;
@@ -911,6 +929,183 @@ void writeyuv24(FILE *fv, BYTE databuf[], int yuvmode,BMPHeaderInfo bhi)
 }
 
 
+/*
+	输入参数：
+		fv：yuv文件指针；
+		databuf：数据缓冲区；
+		yuv：模式；
+		bhi：bmp文件信息
+	功能：将rgb共32位的bmp文件转换为指定格式的yuv文件
+	返回值：无
+*/
+void writeyuv32(FILE *fv, BYTE databuf[], int yuvmode, BMPHeaderInfo bhi)
+{
+	unsigned long i, count = 0;
+	YUV yuv32;
+	DWORD lineSize = bhi.biSizeImage / bhi.biHeight;
+
+	if (yuvmode == '0') {
+		//写Y
+		count = 0;
+		for (i = 0; i<bhi.biSizeImage; i = i + 4) {
+			yuv32.yuvY = 0.257*databuf[i+2] + \
+				0.504*databuf[i+1] + 0.098*databuf[i] + 16;
+			if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
+				printf("wtite error!\n");
+				exit(EXIT_FAILURE);
+			}
+			count++;
+			if (count == (bhi.biWidth)) {
+				count = 0;
+				//写完Y之后，i加上该行剩余的空字节
+				if ((i + 4) % lineSize != 0)
+					i = i + (lineSize - (i + 4) % lineSize);
+			}
+		}
+		
+		//写U
+		count = 0;
+		for (i = 0; i<bhi.biSizeImage; i = i + 8) {
+			yuv32.yuvU = -0.148*databuf[i+2] - \
+				0.291*databuf[i+1] + 0.439*databuf[i] + 128;
+			if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
+				printf("wtite error!\n");
+				exit(EXIT_FAILURE);
+			}
+			count++;
+			if (count == (bhi.biWidth) / 2) {
+				count = 0;
+				//写完U之后，i加上该行剩余的空字节和下一行的字节，跳过下一行
+				if ((i + 8) % lineSize == 0 && (i + 8) >= lineSize)
+					i = i + lineSize;
+				else
+					i = i + (lineSize - (i + 4) % lineSize) + lineSize;
+			}
+		}
+		
+		//写V
+		count = 0;
+		for (i = 0; i<bhi.biSizeImage; i = i + 8) {
+			yuv32.yuvV = 0.439*databuf[i + 2] - \
+				0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
+			if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
+				printf("wtite error!\n");
+				exit(EXIT_FAILURE);
+			}
+			count++;
+			if (count == (bhi.biWidth) / 2) {
+				count = 0;
+				//写完V之后，i加上该行剩余的空字节和下一行的字节，跳过下一行
+				if ((i + 8) % lineSize == 0 && (i + 8) >= lineSize)
+					i = i + lineSize;
+				else
+					i = i + (lineSize - (i + 4) % lineSize) + lineSize;
+			}
+		}
+		
+	}
+	else if (yuvmode == '2') {
+		count = 0;
+		for (i = 0; i<bhi.biSizeImage; i = i + 4) {
+			yuv32.yuvY = 0.257*databuf[i + 2] + \
+				0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
+			if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
+				printf("wtite error!\n");
+				exit(EXIT_FAILURE);
+			}
+			count++;
+			if (count == (bhi.biWidth)) {
+				count = 0;
+				//写完Y之后，i加上该行剩余的空字节
+				if ((i + 4) % lineSize != 0)
+					i = i + (lineSize - (i + 4) % lineSize);
+			}
+		}
+		//写U
+		count = 0;
+		for (i = 0; i<bhi.biSizeImage; i = i + 8) {
+			yuv32.yuvU = -0.148*databuf[i + 2] - \
+				0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
+			if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
+				printf("wtite error!\n");
+				exit(EXIT_FAILURE);
+			}
+			count++;
+			if (count == (bhi.biWidth)) {
+				count = 0;
+				//写完U之后，i加上该行剩余的空字节
+				if ((i + 4) % lineSize != 0)
+					i = i + (lineSize - (i + 4) % lineSize);
+			}
+		}
+		//写V
+		count = 0;
+		for (i = 0; i<bhi.biSizeImage; i = i + 8) {
+			yuv32.yuvV = 0.439*databuf[i + 2] - \
+				0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
+			if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
+				printf("wtite error!\n");
+				exit(EXIT_FAILURE);
+			}
+			count++;
+			if (count == (bhi.biWidth)) {
+				count = 0;
+				//写完V之后，i加上该行剩余的空字节
+				if ((i + 4) % lineSize != 0)
+					i = i + (lineSize - (i + 4) % lineSize);
+			}
+		}
+	}
+	else if (yuvmode == '4') {
+		for (i = 0; i<bhi.biSizeImage; i = i + 4) {
+			yuv32.yuvY = 0.257*databuf[i + 2] + \
+				0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
+			if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
+				printf("wtite error!\n");
+				exit(EXIT_FAILURE);
+			}
+			if (count == (bhi.biWidth)) {
+				count = 0;
+				//写完Y之后，i加上该行剩余的空字节
+				if ((i + 4) % lineSize != 0)
+					i = i + (lineSize - (i + 4) % lineSize);
+			}
+		}
+		//写U
+		for (i = 0; i<bhi.biSizeImage; i = i + 4) {
+			yuv32.yuvU = -0.148*databuf[i + 2] - \
+				0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
+			if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
+				printf("wtite error!\n");
+				exit(EXIT_FAILURE);
+			}
+			count++;
+			if (count == (bhi.biWidth)) {
+				count = 0;
+				//写完U之后，i加上该行剩余的空字节
+				if ((i + 4) % lineSize != 0)
+					i = i + (lineSize - (i + 4) % lineSize);
+			}
+		}
+		//写V
+		for (i = 0; i<bhi.biSizeImage; i = i + 4) {
+			yuv32.yuvV = 0.439*databuf[i + 2] - \
+				0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
+			if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
+				printf("wtite error!\n");
+				exit(EXIT_FAILURE);
+			}
+			count++;
+			if (count == (bhi.biWidth)) {
+				count = 0;
+				//写完V之后，i加上该行剩余的空字节
+				if ((i + 4) % lineSize != 0)
+					i = i + (lineSize - (i + 4) % lineSize);
+			}
+		}
+	}
+}
+
 //映射yuv的颜色表
 void calculateYUV(YUV *yuvcolor,RGB rgbcolor )
 {
@@ -921,3 +1116,53 @@ void calculateYUV(YUV *yuvcolor,RGB rgbcolor )
 	yuvcolor->yuvV = 0.439*rgbcolor.rgbRed - \
 		0.368*rgbcolor.rgbGreen - 0.071*rgbcolor.rgbBlue + 128;
 }
+
+//输出BMPFileHead，文件头
+void printBMPFileHead(BMPFileHead* bfh)
+{
+	if (bfh == NULL)
+	{
+		printf("BMPFileHead is NULL!\n");
+		return;
+	}
+
+	printf("\nBMPFileHead:\n");
+	printf("\t%d\n", sizeof(BMPFileHead));
+	printf("\tbfType=0x%x\n",bfh->bfType);
+	printf("\tbfSize=%u\n", bfh->bfSize);
+	printf("\tbfReserved1=%u\n", bfh->bfReserved1);
+	printf("\tbfReserved2=%u\n", bfh->bfReserved2);
+	printf("\tbfOffsetBytes=%u\n", bfh->bfOffsetBytes);
+	printf("\n");
+
+	return;
+}
+
+//输出BMPHeaderInfo，头信息
+void printBMPHeaderInfo(BMPHeaderInfo* bhi)
+{
+	if (bhi == NULL)
+	{
+		printf("BMPHeaderInfo is NULL!\n");
+		return;
+	}
+
+	printf("\nBMPHeaderInfo:\n");
+	printf("\t%d\n", sizeof(BMPHeaderInfo));
+	printf("\tbiSize=%u\n", bhi->biSize);
+	printf("\tbiWidth=%u\n", bhi->biWidth);
+	printf("\tbiHeight=%u\n", bhi->biHeight);
+	printf("\tbiPlanes=%u\n", bhi->biPlanes);
+	printf("\tbiBitCount=%u\n", bhi->biBitCount);
+	printf("\tbiCompression=%u\n", bhi->biCompression);
+	printf("\tbiSizeImage=%u\n", bhi->biSizeImage);
+	printf("\tbiXPixelsPerMeter=%u\n", bhi->biXPixelsPerMeter);
+	printf("\tbiYPixelsPerMeter=%u\n", bhi->biYPixelsPerMeter);
+	printf("\tbiClrUsed=%u\n", bhi->biClrUsed);
+	printf("\tbiClrImportant=%u\n", bhi->biClrImportant);
+	printf("\n");
+
+	return;
+}
+
+

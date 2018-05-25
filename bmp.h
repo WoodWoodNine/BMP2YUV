@@ -6,10 +6,19 @@
 #include <stdio.h>
 #include <math.h>
 
-typedef unsigned char BYTE ;
+#if defined(__linux__)
+#include <stdint.h>
+typedef uint8_t BYTE ;
+typedef uint16_t WORD;
+typedef uint32_t DWORD;
+typedef uint32_t LONG;
+#else
+typedef unsigned char BYTE;
 typedef unsigned short WORD;
 typedef unsigned long DWORD;
 typedef long LONG;
+#endif
+
 #pragma pack(1)
 typedef struct  {  
 	WORD bfType;			/* 说明文件的类型 */  
@@ -53,8 +62,12 @@ void to_yuv(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode, BMPHeaderInfo
 void calculateYUV(YUV *yuvcolor,RGB rgbcolor );
 
 
-void writeyuv2(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderInfo bhi);
-void writeyuv16(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderInfo bhi);
-void writeyuv256(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode,BMPHeaderInfo bhi);
-void writeyuv24(FILE *fv, BYTE databuf[], int yuvmode,BMPHeaderInfo bhi);
+void writeyuv1(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode, BMPHeaderInfo bhi);
+void writeyuv4(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode, BMPHeaderInfo bhi);
+void writeyuv8(FILE *fv, BYTE databuf[], YUV yuvcolor[], int yuvmode, BMPHeaderInfo bhi);
+void writeyuv24(FILE *fv, BYTE databuf[], int yuvmode, BMPHeaderInfo bhi);
+void writeyuv32(FILE *fv, BYTE databuf[], int yuvmode, BMPHeaderInfo bhi);
+
+void printBMPFileHead(BMPFileHead* bfh);
+void printBMPHeaderInfo(BMPHeaderInfo* bhi);
 #endif
