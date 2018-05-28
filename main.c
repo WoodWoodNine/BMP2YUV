@@ -33,5 +33,5 @@ void usage(void)
 	printf("command:\n\t-0\t将bmp转化为I420(4:2:0)的yuv文件\n");
 	printf("\t-2\t将bmp转化为YUY2（4:2:2）的文件格式\n");
 	printf("\t-4\t将bmp转化为YUV444(4:4:4)的文件格式\n");
-	printf("example:  BMP2YUV.exe -0 input.bmp ouput.yuv\n");
+	printf("example:  BMPtoYUV.exe -0 input.bmp ouput.yuv\n");
 }
