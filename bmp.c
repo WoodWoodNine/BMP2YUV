@@ -32,22 +32,16 @@ void get_bmpdata(char * bmpfilename, char * yuvfilename, char yuvmode)
 		printf("read file error!\n");
 		exit(EXIT_FAILURE);
 	}
-	printBMPFileHead(&bfh);
+	//printBMPFileHead(&bfh);
+	
 	//读取位图信息头
 	if ((fread(&bhi, sizeof(WORD), 20, fp)) < 20) {
 		printf("read file error!\n");
 		exit(EXIT_FAILURE);
 	}
-	//if (bhi.biHeight>10000){
-	//	bhi.biHeight = ((bfh.bfSize-54) << 3) / (bhi.biBitCount * bhi.biWidth);
-	//}
-	printBMPHeaderInfo(&bhi);
-	if (bhi.biHeight % 2 == 1 || bhi.biWidth % 2 == 1) {
-		printf("the size of picture is wrong!\n");
-		exit(EXIT_FAILURE);
-	}
+	//printBMPHeaderInfo(&bhi);
 
-	printf("bhi.biBitCount=%u\n\n", bhi.biBitCount);
+	//printf("bhi.biBitCount=%u\n\n", bhi.biBitCount);
 	//如果是单/16/256色则获取调色板
 	if (bhi.biBitCount == 0x01 || bhi.biBitCount == 0x04 || bhi.biBitCount == 0x08) {
 		for (i = 0; i<pow(2, bhi.biBitCount); i++) {
@@ -59,9 +53,9 @@ void get_bmpdata(char * bmpfilename, char * yuvfilename, char yuvmode)
 	if (bhi.biSizeImage == 0) {
 		bhi.biSizeImage = bfh.bfSize - 54;
 	}
-	printf("bhi.biSizeImage=%u\n", bhi.biSizeImage);
-	printf("bhi.biHeight=%u\n", bhi.biHeight);
-	printf("bhi.biWidth=%u\n", bhi.biWidth);
+	//printf("bhi.biSizeImage=%u\n", bhi.biSizeImage);
+	//printf("bhi.biHeight=%u\n", bhi.biHeight);
+	//printf("bhi.biWidth=%u\n", bhi.biWidth);
 	if(bhi.biHeight >> 31 == 0)
 		lineSize = bhi.biSizeImage / bhi.biHeight;
 	else
@@ -985,76 +979,50 @@ bhi：bmp文件信息
 void writeyuv32(FILE *fv, BYTE databuf[], int yuvmode, BMPHeaderInfo bhi)
 {
 	unsigned long i, count = 0;
+	int line, offset;
 	YUV yuv32;
 	DWORD lineSize = bhi.biSizeImage / bhi.biHeight;
 
 	if (yuvmode == '0' && bhi.biHeight>>31 == 0) {
 		//写Y
-		count = 0;
-		for (i = 0; i<bhi.biSizeImage; i = i + 4) {
-			//printf("a:%u b:%u c:%u d:%u\n",databuf[i],databuf[i+1],databuf[i+2],databuf[i+3]);
-			yuv32.yuvY = 0.257*databuf[i + 2] + \
-				0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
-			if (i == 0) printf("Y=%u\n", yuv32.yuvY);
-			if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
-				printf("wtite error!\n");
-				exit(EXIT_FAILURE);
-			}
-			count++;
-			if (count == (bhi.biWidth)) {
-				count = 0;
-				//写完Y之后，i加上该行剩余的空字节
-				if ((i + 4) % lineSize != 0)
-					i = i + (lineSize - (i + 1) % lineSize) - 2;
+		for (line = 0; line < bhi.biHeight; line++) {
+			for (offset = 0; offset < lineSize; offset += 4) {
+				i = line*lineSize + offset;
+				yuv32.yuvY = 0.257*databuf[i + 2] + \
+					0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
+				if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
-
 		//写U
-		count = 0;
-		for (i = 0; i<bhi.biSizeImage; i = i + 8) {
-			yuv32.yuvU = -0.148*databuf[i + 2] - \
-				0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
-			if (i == 0) printf("U=%u\n", yuv32.yuvU);
-			if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
-				printf("wtite error!\n");
-				exit(EXIT_FAILURE);
-			}
-			count++;
-			if (count == (bhi.biWidth) / 2) {
-				count = 0;
-				//写完U之后，i加上该行剩余的空字节和下一行的字节，跳过下一行
-				if ((i + 8) % lineSize == 0 && (i + 8) >= lineSize)
-					i = i + lineSize;
-				else
-					i = i + (lineSize - (i + 1) % lineSize) - 2 + lineSize;
+		for (line = 0; line < bhi.biHeight; line+=2) {
+			for (offset = 0; offset < lineSize; offset += 8) {
+				i = line*lineSize + offset;
+				yuv32.yuvU = -0.148*databuf[i + 2] - \
+					0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
-
 		//写V
-		count = 0;
-		for (i = 0; i<bhi.biSizeImage; i = i + 8) {
-			yuv32.yuvV = 0.439*databuf[i + 2] - \
-				0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
-			if (i == 0) printf("V=%u\n", yuv32.yuvV);
-			if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
-				printf("wtite error!\n");
-				exit(EXIT_FAILURE);
-			}
-			count++;
-			if (count == (bhi.biWidth) / 2) {
-				count = 0;
-				//写完V之后，i加上该行剩余的空字节和下一行的字节，跳过下一行
-				if ((i + 8) % lineSize == 0 && (i + 8) >= lineSize)
-					i = i + lineSize;
-				else
-					i = i + (lineSize - (i + 1) % lineSize) - 2 + lineSize;
+		for (line = 0; line < bhi.biHeight; line+=2) {
+			for (offset = 0; offset < lineSize; offset += 8) {
+				i = line*lineSize + offset;
+				yuv32.yuvV = 0.439*databuf[i + 2] - \
+					0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
-
 	}
 	else if (yuvmode == '0' && bhi.biHeight >> 31 != 0) {
 		lineSize = bhi.biSizeImage / (-bhi.biHeight);
-		int line, offset;
 		//写Y
 		for (line = -bhi.biHeight; line > 0; line--) {
 			for (offset = 0; offset < lineSize; offset += 4) {
@@ -1092,100 +1060,157 @@ void writeyuv32(FILE *fv, BYTE databuf[], int yuvmode, BMPHeaderInfo bhi)
 			}
 		}
 	}
-	else if (yuvmode == '2') {
-		for (i = 0; i<bhi.biSizeImage; i = i + 3) {
-			yuv32.yuvY = 0.257*databuf[i + 2] + \
-				0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
-			if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
-				printf("wtite error!\n");
-				exit(EXIT_FAILURE);
-			}
-			count++;
-			if (count == (bhi.biWidth)) {
-				count = 0;
-				//写完Y之后，i加上该行剩余的空字节
-				if ((i + 3) % lineSize != 0)
-					i = i + (lineSize - (i + 1) % lineSize) - 2;
+	else if (yuvmode == '2' && bhi.biHeight>>31 == 0) {
+		//写Y
+		for (line = 0; line < bhi.biHeight; line++) {
+			for (offset = 0; offset < lineSize; offset += 4) {
+				i = line*lineSize + offset;
+				yuv32.yuvY = 0.257*databuf[i + 2] + \
+					0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
+				if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
 		//写U
-		for (i = 0; i<bhi.biSizeImage; i = i + 6) {
-			yuv32.yuvU = -0.148*databuf[i + 2] - \
-				0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
-			if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
-				printf("wtite error!\n");
-				exit(EXIT_FAILURE);
-			}
-			count++;
-			if (count == (bhi.biWidth)) {
-				count = 0;
-				//写完U之后，i加上该行剩余的空字节
-				if ((i + 3) % lineSize != 0)
-					i = i + (lineSize - (i + 1) % lineSize) - 2;
+		for (line = 0; line < bhi.biHeight; line++) {
+			for (offset = 0; offset < lineSize; offset += 8) {
+				i = line*lineSize + offset;
+				yuv32.yuvU = -0.148*databuf[i + 2] - \
+					0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
 		//写V
-		for (i = 0; i<bhi.biSizeImage; i = i + 6) {
-			yuv32.yuvV = 0.439*databuf[i + 2] - \
-				0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
-			if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
-				printf("wtite error!\n");
-				exit(EXIT_FAILURE);
-			}
-			count++;
-			if (count == (bhi.biWidth)) {
-				count = 0;
-				//写完V之后，i加上该行剩余的空字节
-				if ((i + 3) % lineSize != 0)
-					i = i + (lineSize - (i + 1) % lineSize) - 2;
+		for (line = 0; line < bhi.biHeight; line++) {
+			for (offset = 0; offset < lineSize; offset += 8) {
+				i = line*lineSize + offset;
+				yuv32.yuvV = 0.439*databuf[i + 2] - \
+					0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
 	}
-	else if (yuvmode == '4') {
-		for (i = 0; i<bhi.biSizeImage; i = i + 3) {
-			yuv32.yuvY = 0.257*databuf[i + 2] + \
-				0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
-			if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
-				printf("wtite error!\n");
-				exit(EXIT_FAILURE);
-			}
-			if (count == (bhi.biWidth)) {
-				count = 0;
-				//写完Y之后，i加上该行剩余的空字节
-				if ((i + 3) % lineSize != 0)
-					i = i + (lineSize - (i + 1) % lineSize) - 2;
+	else if (yuvmode == '2' && bhi.biHeight >> 31 != 0) {
+		lineSize = bhi.biSizeImage / (-bhi.biHeight);
+		//写Y
+		for (line = -bhi.biHeight; line > 0; line--) {
+			for (offset = 0; offset < lineSize; offset += 4) {
+				i = (line - 1)*lineSize + offset;
+				yuv32.yuvY = 0.257*databuf[i + 2] + \
+					0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
+				if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
 		//写U
-		for (i = 0; i<bhi.biSizeImage; i = i + 3) {
-			yuv32.yuvU = -0.148*databuf[i + 2] - \
-				0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
-			if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
-				printf("wtite error!\n");
-				exit(EXIT_FAILURE);
-			}
-			count++;
-			if (count == (bhi.biWidth)) {
-				count = 0;
-				//写完U之后，i加上该行剩余的空字节
-				if ((i + 3) % lineSize != 0)
-					i = i + (lineSize - (i + 1) % lineSize) - 2;
+		for (line = -bhi.biHeight; line > 0; line--) {
+			for (offset = 0; offset < lineSize; offset += 8) {
+				i = (line - 1)*lineSize + offset;
+				yuv32.yuvU = -0.148*databuf[i + 2] - \
+					0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
 		//写V
-		for (i = 0; i<bhi.biSizeImage; i = i + 3) {
-			yuv32.yuvV = 0.439*databuf[i + 2] - \
-				0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
-			if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
-				printf("wtite error!\n");
-				exit(EXIT_FAILURE);
+		for (line = -bhi.biHeight; line > 0; line --) {
+			for (offset = 0; offset < lineSize; offset += 8) {
+				i = (line - 1)*lineSize + offset;
+				yuv32.yuvV = 0.439*databuf[i + 2] - \
+					0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
-			count++;
-			if (count == (bhi.biWidth)) {
-				count = 0;
-				//写完V之后，i加上该行剩余的空字节
-				if ((i + 3) % lineSize != 0)
-					i = i + (lineSize - (i + 1) % lineSize) - 2;
+		}
+	}
+	else if (yuvmode == '4' && bhi.biHeight>>31 == 0) {
+		//写Y
+		for (line = 0; line < bhi.biHeight; line++) {
+			for (offset = 0; offset < lineSize; offset += 4) {
+				i = line*lineSize + offset;
+				yuv32.yuvY = 0.257*databuf[i + 2] + \
+					0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
+				if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
+			}
+		}
+		//写U
+		for (line = 0; line < bhi.biHeight; line++) {
+			for (offset = 0; offset < lineSize; offset += 4) {
+				i = line*lineSize + offset;
+				yuv32.yuvU = -0.148*databuf[i + 2] - \
+					0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
+			}
+		}
+		//写V
+		for (line = 0; line < bhi.biHeight; line++) {
+			for (offset = 0; offset < lineSize; offset += 4) {
+				i = line*lineSize + offset;
+				yuv32.yuvV = 0.439*databuf[i + 2] - \
+					0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
+			}
+		}
+	}
+	else if (yuvmode == '4' && bhi.biHeight >> 31 != 0) {
+		lineSize = bhi.biSizeImage / (-bhi.biHeight);
+		//写Y
+		for (line = -bhi.biHeight; line > 0; line--) {
+			for (offset = 0; offset < lineSize; offset += 4) {
+				i = (line - 1)*lineSize + offset;
+				yuv32.yuvY = 0.257*databuf[i + 2] + \
+					0.504*databuf[i + 1] + 0.098*databuf[i] + 16;
+				if ((fwrite(&(yuv32.yuvY), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
+			}
+		}
+		//写U
+		for (line = -bhi.biHeight; line > 0; line--) {
+			for (offset = 0; offset < lineSize; offset += 4) {
+				i = (line - 1)*lineSize + offset;
+				yuv32.yuvU = -0.148*databuf[i + 2] - \
+					0.291*databuf[i + 1] + 0.439*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvU), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
+			}
+		}
+		//写V
+		for (line = -bhi.biHeight; line > 0; line --) {
+			for (offset = 0; offset < lineSize; offset += 4) {
+				i = (line - 1)*lineSize + offset;
+				yuv32.yuvV = 0.439*databuf[i + 2] - \
+					0.368*databuf[i + 1] - 0.071*databuf[i] + 128;
+				if ((fwrite(&(yuv32.yuvV), sizeof(BYTE), 1, fv)) == 0) {
+					printf("wtite error!\n");
+					exit(EXIT_FAILURE);
+				}
 			}
 		}
 	}
